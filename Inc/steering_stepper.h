@@ -13,8 +13,8 @@
 #include "tim.h" // gets PWM peripherals
 #include "steering_encoder.h"
 
-#define STEER_DIRECTION_RIGHT 0
-#define STEER_DIRECTION_LEFT 1
+#define STEER_DIRECTION_RIGHT 1
+#define STEER_DIRECTION_LEFT 0
 #define STEER_ENABLED 1
 #define STEER_DISABLED 0
 
