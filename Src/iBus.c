@@ -14,50 +14,78 @@
 #include "kelly.h"
 
 
-volatile uint8_t ibus_rx_buffer[40] = {0};
+volatile uint8_t ibus_rx_buffer[40] = { 0 };
 volatile uint8_t ibus_rx_flags = 0;
-volatile uint8_t ibus_rx_xavier_buffer[20] = {0};
-volatile uint8_t ibus_rx_xavier_flags = 0;
+
+const uint8_t msg_len = 9; //input
+int received = 0;
+volatile uint8_t input_UART3_rxBuffer[9] = {0}; // XAVIER
+volatile uint8_t ibus_rx_xavier_flags = 0; // XAVIER
+volatile uint8_t ibus_rx_xavier_buffer[20] = {0}; // XAVIER 11 bytes required, 20 ok?
+
+volatile uint8_t usable_data[9] = {'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W', 'W'}; // XAVIER
+
+volatile uint8_t output_UART3_rxBuffer[18] = {'V', 'V', 'E', 'E', 'I', 'M', 'U', 'I', 'M', 'U', 'I', 'M', 'U', 'I', 'M', 'U', 'S', 'C'}; // XAVIER
 
 
-volatile uint8_t latest_full_xavier_message[10] = {0};
+void handle_message(uint8_t read_buf[]){
+	//memcpy(usable_data, read_buf, sizeof(read_buf));
 
-//volatile uint8_t output_UART3_rxBuffer[18] = {'V', 'V', 'E', 'E', 'I', 'M', 'U', 'I', 'M', 'U', 'I', 'M', 'U', 'I', 'M', 'U', 'S', 'C'};
+    for(int i=0; i<sizeof(read_buf); i++)
+    {
+        usable_data[i] = read_buf[i];
+    }
+}
+
 
 XavierCommand_t xavier_command = {.throttle=0, .steering=1, .brake=0, .gear=0};
 uint8_t xavier_receive_failure_counter = 0;
 
-uint8_t checksum(unsigned char *ptr, int sz) {
-  uint8_t chk = 0;
-  while (sz-- != 0){
-    chk -= *ptr++;
-  }
-  return chk;
-}
-
-void Transmit_To_Xavier(MessageToXavier_t message){ // Transmit message to Xavier
-	uint8_t buffer[18] = {0};
-	buffer[0] = (message.velocity & 0xff);
-	buffer[1] = (message.velocity >> 8);
-	buffer[2] = (message.steering_encoder & 0xff);
-	buffer[3] = (message.steering_encoder >> 8);
-	buffer[4] = (message.imu.acc[0] & 0xff);
-	buffer[5] = (message.imu.acc[0] >> 8);
-	buffer[6] = (message.imu.acc[1] & 0xff);
-	buffer[7] = (message.imu.acc[1] >> 8);
-	buffer[8] = (message.imu.acc[2] & 0xff);
-	buffer[9] = (message.imu.acc[2] >> 8);
-	buffer[10] = (message.imu.gyro[0] & 0xff);
-	buffer[11] = (message.imu.gyro[0] >> 8);
-	buffer[12] = (message.imu.gyro[1] & 0xff);
-	buffer[13] = (message.imu.gyro[1] >> 8);
-	buffer[14] = (message.imu.gyro[2] & 0xff);
-	buffer[15] = (message.imu.gyro[2] >> 8);
-	buffer[16] = (message.estop);
-	buffer[17] = 'C';
+void Transmit_To_Xavier(uint8_t i){ // TODO
+	i += 48;
+	uint8_t buffer[18] = {i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i};
+	buffer[sizeof(buffer)-1] = 'C';
+	//HAL_UART_Transmit(&huart3, output_UART3_rxBuffer, sizeof(output_UART3_rxBuffer), 100);
 	HAL_UART_Transmit(&huart3, buffer, sizeof(buffer), 100);
 }
 
+void Transmit_Multiple_To_Xavier(uint8_t i){ // TODO
+	i += 48;
+	uint8_t buffer[18] = {i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i};
+	buffer[sizeof(buffer)-1] = 'C';
+	//HAL_UART_Transmit(&huart3, output_UART3_rxBuffer, sizeof(output_UART3_rxBuffer), 100);
+	HAL_UART_Transmit(&huart3, buffer, sizeof(buffer), 100);
+}
+
+void Transmit_Char_To_Xavier(char c){ // TODO
+	uint8_t buffer[18] = {c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c};
+	buffer[sizeof(buffer)-1] = 'C';
+	//HAL_UART_Transmit(&huart3, output_UART3_rxBuffer, sizeof(output_UART3_rxBuffer), 100);
+	HAL_UART_Transmit(&huart3, buffer, sizeof(buffer), 100);
+}
+
+int Poll_Port() {
+
+  auto count = HAL_UART_Receive_IT(&huart3,
+									input_UART3_rxBuffer + received, 		  // Append to whatever we already have
+									msg_len - received); // Only read enough to finish the current message.
+
+  if(count != -1) {
+    received += count;
+    if(received == msg_len) {
+      HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin); // Red LED if ERROR
+      if (input_UART3_rxBuffer[sizeof(input_UART3_rxBuffer)-1] != 'C'){ // Read_buf is out of phase or has incorrect values
+        received -= 1;
+
+        return -1; // Buffer might not be empty
+      }
+      handle_message(input_UART3_rxBuffer);
+      received = 0;
+      return 1; // Buffer might not be empty
+    }
+  }
+  return 0; // Buffer is empty
+}
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef* uart)
 {
@@ -109,13 +137,13 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef* uart)
 		ibus_rx_flags = IBUS_HAS_MESSAGE;
 	  }
   }
-  if (uart == &huart3) // XAVIER COMMUNICATION
+  if (uart == &huart3) // XAVIER COMMUNICATION NEW
   {
-	  // iBus message format: 0x20 0x40 dd * 7 chk
+	  // iBus message format: 0x20 0x40 dd * 7 chk chk
 	  // where the 0x20 0x40 are header bytes,
 	  // dd are data bytes (7 of them, (thr: 1B, str: 1B, brk: 1B, gear: 1B, h-light: 1B, R-light: 1B, L-light: 1B))
-	  // chk is checksum byte.
-	  // 10 bytes in total.
+	  // chk are checksum bytes.
+	  // 11 bytes in total.
 
 	  if (!ibus_rx_xavier_flags)
 	  {
@@ -140,23 +168,24 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef* uart)
 		}
 		else
 		{
-          // have header's second byte, queue the rest of the message (8 bytes).
+          // have header's second byte, queue the rest of the message (9 bytes).
 		  ibus_rx_xavier_flags = IBUS_HAS_4;
-		  HAL_UART_Receive_IT(uart, ibus_rx_xavier_buffer + 2, 8);
+		  HAL_UART_Receive_IT(uart, ibus_rx_xavier_buffer + 2, 9);
 		}
 	  }
 	  else
 	  {
-        // the remainder of the message arrived, write it to usable_data and start receiving next message.
+        // the remainder of the message arrived, set the flag and don't listen to anything
+		// else until main() has read it.
+		// Raw message is in the ibus_rx_buffer variable.
+		//ibus_rx_xavier_flags = IBUS_HAS_MESSAGE;  // Don't use this flag. Data might lag behind, if not processed fast enough.
 
 		HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
 
-		for(int i=0; i<sizeof(ibus_rx_xavier_buffer); i++)
+		for(int i=0; i<7; i++)
 		{
-			latest_full_xavier_message[i] = ibus_rx_xavier_buffer[i]; // Save latest full message
+			usable_data[i] = ibus_rx_xavier_buffer[i+2]; // Write data from buffer to usable data. Exclude 2 start bytes and 2 checksum bytes
 		}
-
-		Handle_Xavier_Message(latest_full_xavier_message); // Check and handle message
 
 		ibus_rx_xavier_flags = 0; // Set flags to 0.
 
@@ -170,8 +199,55 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef* uart)
 
 	  }
   }
-}
+  else if (1==0){ // XAVIER COMMUNICATION OLD??
+	  //HAL_UART_Receive_IT(&huart3, input_UART3_rxBuffer, sizeof(input_UART3_rxBuffer));
 
+	  while (Poll_Port() != 0){
+	  }
+
+	  output_UART3_rxBuffer[1] = usable_data[1];
+	  output_UART3_rxBuffer[2] = 'Y';
+	  output_UART3_rxBuffer[3] = input_UART3_rxBuffer[3];
+
+	  HAL_UART_Transmit(&huart3, output_UART3_rxBuffer, sizeof(output_UART3_rxBuffer), 100);
+
+	  //Transmit_Char_To_Xavier(input_UART3_rxBuffer[0]);
+
+	  // Check if received message last data byte (confirmation byte) is correct: [-2] == 'C'
+	  if (input_UART3_rxBuffer[sizeof(input_UART3_rxBuffer)-2] == 'C'){
+		  // Data is OK, overwrite xavier_command
+		  xavier_receive_failure_counter = 0; // Reset failure counter
+
+		  xavier_command.throttle = input_UART3_rxBuffer[0];
+		  xavier_command.steering = input_UART3_rxBuffer[1];
+		  xavier_command.brake = input_UART3_rxBuffer[2];
+		  xavier_command.gear = input_UART3_rxBuffer[3];
+		  xavier_command.h_light = input_UART3_rxBuffer[4];
+		  xavier_command.r_light = input_UART3_rxBuffer[5];
+		  xavier_command.l_light = input_UART3_rxBuffer[6];
+
+		  //HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, 0);
+		  //HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, 1); // Green LED if OK
+	  }
+	  else{
+		  // Data is not OK
+		  xavier_receive_failure_counter += 1;
+
+		  if (xavier_receive_failure_counter >= 5){
+			  // 5 consecutive failures, overwrite xavier_command to stopping state
+			  xavier_command.throttle = THROTTLE_OFF;
+			  xavier_command.steering = STEER_OFF;
+			  xavier_command.brake = BRAKE_ENGAGE;
+			  xavier_command.gear = GEAR_FORWARD;
+			  xavier_command.r_light = LIGHT_ON;
+			  xavier_command.l_light = LIGHT_ON;
+		  }
+		  // Else keep previous commads
+		  //HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, 1); // Red LED if ERROR
+		  //HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, 0);
+	  }
+  }
+}
 
 #define JOIN_TO_WORD(arr) ((*(arr)) | (*((arr) + 1) << 8))
 
@@ -242,43 +318,22 @@ ReceiverState_t HandleReceiverMessage()
   return rec;
 }
 
-void Handle_Xavier_Message(uint8_t full_xavier_message[])
+void HandleXavierMessage()
 {
+  // Decode the message.
+  handle_message(&ibus_rx_xavier_buffer);
 
-	uint8_t chk = checksum(full_xavier_message, 10);
+  // Reset the RX ISR flags.
+  ibus_rx_xavier_flags = 0;
 
-	if (chk != 0){ // Checksum does not match. Do not overwrite xavier_command
-		HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, 1); // Show RED led
-		HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, 0);
+  for (uint8_t i = 0; i < 20; i++)
+  {
+	// Zero fill the buffer.
+    ibus_rx_xavier_buffer[i] = 0;
+  }
 
-		xavier_receive_failure_counter += 1; // Count consecutive failures
-
-		if (xavier_receive_failure_counter >= 5)
-		{
-			// 5 consecutive failures, overwrite xavier_command to stopping state
-			xavier_command.throttle = THROTTLE_OFF;
-			xavier_command.steering = STEER_OFF;
-			xavier_command.brake = BRAKE_ENGAGE;
-			xavier_command.gear = GEAR_FORWARD;
-			xavier_command.r_light = LIGHT_ON;
-			xavier_command.l_light = LIGHT_ON;
-		}
-		// Else keep previous commands
-	}
-	else{ // Checksum matches. Data OK. Overwrite xavier_command
-		HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, 0); // Show GREEN led
-		HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, 1);
-
-		xavier_receive_failure_counter = 0; // Reset failure counter
-
-		xavier_command.throttle = full_xavier_message[2]; // Data bytes start from index 2
-		xavier_command.steering = full_xavier_message[3];
-		xavier_command.brake = full_xavier_message[4];
-		xavier_command.gear = full_xavier_message[5];
-		xavier_command.h_light = full_xavier_message[6];
-		xavier_command.r_light = full_xavier_message[7];
-		xavier_command.l_light = full_xavier_message[8];
-	}
+  // Start receiving again.
+  HAL_UART_Receive_IT(&huart3, ibus_rx_xavier_buffer, 1);
 }
 
 void CheckUartInterruptStatus()
@@ -293,3 +348,14 @@ void CheckUartInterruptStatus()
   }
 }
 
+void CheckUartXavierInterruptStatus()
+{
+  uint8_t uart_status = HAL_UART_GetState(&huart3);
+
+  if (uart_status == 32)
+  {
+	// Weird ISR error. Reset state and try again.
+	ibus_rx_xavier_flags = 0;
+	HAL_UART_Receive_IT(&huart3, ibus_rx_xavier_buffer, 1);
+  }
+}

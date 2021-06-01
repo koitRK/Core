@@ -9,7 +9,6 @@
 #define INC_IBUS_H_
 #include <stdint.h>
 #include "usart.h"
-#include "imu.h"
 
 #define REC_SW_UP 1000
 #define REC_SW_DOWN 2000
@@ -23,9 +22,12 @@ UART_HandleTypeDef huart4;
 
 extern volatile uint8_t ibus_rx_buffer[40];
 extern volatile uint8_t ibus_rx_flags;
-extern volatile uint8_t ibus_rx_xavier_buffer[20]; // INPUT from XAVIER: message format: 0x20 0x40 dd * 7 chk. dd=(thr: 1B, str: 1B, brk: 1B, gear: 1B, h-light: 1B, R-light: 1B, L-light: 1B)
-extern volatile uint8_t ibus_rx_xavier_flags; // INPUT from XAVIER flags
-extern volatile uint8_t ibus_tx_xavier_buffer[18]; // OUTPUT to XAVIER: message format: dd*17 confirm (vel: 2B, enc: 2B, IMU: 2*3*2B=12B, E-stop: 1B, confirm: 1B)
+extern volatile uint8_t ibus_rx_xavier_buffer[20]; // XAVIER 11 bytes required, 20 ok?
+extern volatile uint8_t ibus_rx_xavier_flags; // XAVIER
+
+
+extern volatile uint8_t input_UART3_rxBuffer[9]; // from xavier, n-data bytes +1 stop byte (thr: 1B, str: 1B, brk: 1B, gear: 1B, h-light: 1B, R-light: 1B, L-light: 1B, confirm: 1B, +1 for stop: 1B)
+extern volatile uint8_t output_UART3_rxBuffer[18]; // to xavier, n-data bytes (vel: 2B, enc: 2B, IMU: 2*3*2B=12B, E-stop: 1B, confirm: 1B)
 
 uint8_t xavier_receive_failure_counter;
 
@@ -63,17 +65,7 @@ typedef struct
 	uint8_t l_light;
 } XavierCommand_t;
 
-typedef struct
-{
-	uint16_t velocity;
-	uint16_t steering_encoder;
-	imu_t imu;
-	uint8_t estop;
-} MessageToXavier_t;
-
-XavierCommand_t xavier_command; // Commands from Xavier
-MessageToXavier_t message_to_xavier; // Message to be sent to Xavier
-
+XavierCommand_t xavier_command;
 
 //prototypes
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef* uart);
@@ -84,6 +76,6 @@ void HandleXavierMessage();
 void CheckUartInterruptStatus();
 void CheckUartXavierInterruptStatus();
 
-void Transmit_To_Xavier(MessageToXavier_t message);
+void Transmit_To_Xavier(uint8_t i);
 
 #endif /* INC_IBUS_H_ */
