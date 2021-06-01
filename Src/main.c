@@ -251,18 +251,18 @@ int main(void)
 		//Set_Brake(0);
 		//HAL_GPIO_WritePin(BRAKE_ACTUATOR_ENABLE_OUT_GPIO_Port, BRAKE_ACTUATOR_ENABLE_OUT_Pin, 0);
 
-		sprintf(debug,"%lu", estop_sensor_value == ESTOP_ACTIVATED);
-		char text2[10] = " : ";
-		HAL_UART_Transmit(&huart3, debug, strlen(debug), 100);
-		HAL_UART_Transmit(&huart3, text2, strlen(text2), 100);
-		sprintf(debug,"%lu", Read_Estop());
-		char text3[10] = " : ";
-		HAL_UART_Transmit(&huart3, debug, strlen(debug), 100);
-		HAL_UART_Transmit(&huart3, text3, strlen(text3), 100);
-		sprintf(debug,"%lu", debug_int);
-		char text4[10] = "\n\r";
-		HAL_UART_Transmit(&huart3, debug, strlen(debug), 100);
-		HAL_UART_Transmit(&huart3, text4, strlen(text4), 100);
+//		sprintf(debug,"%lu", estop_sensor_value == ESTOP_ACTIVATED);
+//		char text2[10] = " : ";
+//		HAL_UART_Transmit(&huart3, debug, strlen(debug), 100);
+//		HAL_UART_Transmit(&huart3, text2, strlen(text2), 100);
+//		sprintf(debug,"%lu", Read_Estop());
+//		char text3[10] = " : ";
+//		HAL_UART_Transmit(&huart3, debug, strlen(debug), 100);
+//		HAL_UART_Transmit(&huart3, text3, strlen(text3), 100);
+//		sprintf(debug,"%lu", debug_int);
+//		char text4[10] = "\n\r";
+//		HAL_UART_Transmit(&huart3, debug, strlen(debug), 100);
+//		HAL_UART_Transmit(&huart3, text4, strlen(text4), 100);
 
     /* USER CODE END WHILE */
 
