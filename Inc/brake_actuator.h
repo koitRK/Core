@@ -12,8 +12,8 @@
 #include "gpio.h"
 #include "brake_hall_sensor.h" // uses hall sensor to set brake actuator correct position(actuator doesn't have dedicated encoder)
 
-#define BRAKE_SENSOR_OFF_VALUE 2104  // Brake sensor value when brakes are disengaged
-#define BRAKE_SENSOR_ON_VALUE 2140   // Brake sensor value when brakes are fully engaged
+#define BRAKE_SENSOR_OFF_VALUE 2850  // Brake sensor value when brakes are disengaged
+#define BRAKE_SENSOR_ON_VALUE 3200   // Brake sensor value when brakes are fully engaged
 #define BRAKE_ENGAGE 1
 #define BRAKE_DISENGAGE 0
 

@@ -37,7 +37,6 @@
 #include "ATV_lights.h"
 #include "steering_stepper.h"
 #include "speedometer.h"
-#include "imu.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -127,12 +126,17 @@ int main(void)
 		  .switch_c=ReceiverSwitchUp,
 		  .switch_d=ReceiverSwitchUp};
 
+	//HAL_UART_Receive_IT (&huart3, input_UART3_rxBuffer, sizeof(input_UART3_rxBuffer)); //5
 	HAL_UART_Receive_IT (&huart3, ibus_rx_xavier_buffer, 1);
+
 
 	uint8_t counter = 0;
 	uint32_t current_serial_time = HAL_GetTick();
 	uint32_t previous_serial_time = HAL_GetTick();
 	uint8_t button_released = 0;
+
+	char debug[16];
+	uint32_t debug_int = 69;
 
   /* USER CODE END 2 */
 
@@ -157,18 +161,30 @@ int main(void)
 		const uint16_t current_steering_value = Get_Steering_Encoder_Value();
 		const uint16_t brake_sensor_value = Get_Brake_Sensor_Value();
 		const uint8_t estop_sensor_value = Read_Estop();
-		const imu_t imu_data = {.acc={11, 22, 33}, .gyro={44, 55, 66}};
 
 		const double current_braking_strength = Map_To_Range(brake_sensor_value, BRAKE_SENSOR_OFF_VALUE, BRAKE_SENSOR_ON_VALUE, 0, 1); // Value will go below 0, if piston contracted too much, or above 1, if piston pushed too much
 
 
 		u.throttle = Clamp(Map_To_Range(RC_data.left_vertical, 1500, 2000, 0, 255), 0, 255);
 		u.brake = RC_data.left_vertical < RC_BRAKE_ACTIVATION_VALUE ? 1 : 0;
-		u.steering = current_steering_value < target_steering_value ? STEER_RIGHT : current_steering_value == target_steering_value ? STEER_OFF : STEER_LEFT;
+		//u.steering = current_steering_value > target_steering_value ? STEER_RIGHT : current_steering_value == target_steering_value ? STEER_OFF : STEER_LEFT;
 		u.gear = RC_data.switch_a == ReceiverSwitchUp ? GEAR_FORWARD : GEAR_REVERSE;
 		u.handbrake = RC_data.switch_c == ReceiverSwitchUp ? 0 : 1;
 		u.steering_lock = RC_data.switch_d == ReceiverSwitchUp ? 0 : 1;
 		u.xavier_override = RC_data.switch_b == ReceiverSwitchDown ? 1 : 0;
+
+		uint16_t steering_error = 20;
+		if(current_steering_value - target_steering_value > steering_error || current_steering_value - target_steering_value < -steering_error){
+			if(current_steering_value > target_steering_value){
+				u.steering = STEER_RIGHT;
+			}else if(current_steering_value < target_steering_value){
+				u.steering = STEER_LEFT;
+			}else{
+				u.steering = STEER_OFF;
+			}
+		}else{
+			u.steering = STEER_OFF;
+		}
 
 		if (u.xavier_override == 1)
 		{
@@ -185,24 +201,27 @@ int main(void)
 
 		if (u.brake == 1 || u.handbrake == 1 || estop_sensor_value == ESTOP_ACTIVATED) // Brake
 		{
+			debug_int = 11;
 			Set_Throttle(THROTTLE_OFF);   // Stopping ATV motor
 			Set_Brake(BRAKE_ENGAGE);      // Engaging brakes
 			Set_Brake_Light(LIGHT_ON);    // Brake light ON
 		}
 		else // Release brakes
 		{
+			debug_int = 666;
 			Set_Brake(BRAKE_DISENGAGE);   // Disengage brakes
 			Set_Brake_Light(LIGHT_OFF);   // Brake light off
-
 			if (current_braking_strength <= 0) // Problematic??? If brake sensor has noise, throttle might be unstable TODO
 			{
+				debug_int = 777;
 				Set_Gear(u.gear);		  // Change gear
 				Set_Throttle(u.throttle); // Power ATV motor
 			}
 		}
 
-		if (u.steering_lock == 0) // Steering not locked
+		if (u.steering_lock == 0){ // Steering not locked
 			Steering_Stepper_Move(u.steering, STEER_ENABLED);
+		}
 		else {
 			Steering_Stepper_Move(u.steering, STEER_DISABLED);
 		}
@@ -212,9 +231,38 @@ int main(void)
 		Set_Right_Blinker(u.r_light);
 
 
-		MessageToXavier_t message_to_xavier = {.velocity=xavier_command.throttle, .steering_encoder=321, .imu=imu_data, .estop=5};
-		Transmit_To_Xavier(message_to_xavier);
+//		uint32_t current_serial_time = HAL_GetTick();
+//		if (current_serial_time - previous_serial_time > 5){
+//			previous_serial_time = current_serial_time;
+//
+//			Transmit_To_Xavier(HAL_GPIO_ReadPin(USER_Btn_GPIO_Port, USER_Btn_Pin)); // Send sensor data to xavier TODO
+//			if (HAL_GPIO_ReadPin(USER_Btn_GPIO_Port, USER_Btn_Pin)){
+//				if (button_released == 0){
+//					counter += 1;
+//					button_released = 1;
+//				}
+//			}
+//			else{
+//				button_released = 0;
+//				//counter = 0;
+//			}
+//
+//		}
+		//Set_Brake(0);
+		//HAL_GPIO_WritePin(BRAKE_ACTUATOR_ENABLE_OUT_GPIO_Port, BRAKE_ACTUATOR_ENABLE_OUT_Pin, 0);
 
+		sprintf(debug,"%lu", estop_sensor_value == ESTOP_ACTIVATED);
+		char text2[10] = " : ";
+		HAL_UART_Transmit(&huart3, debug, strlen(debug), 100);
+		HAL_UART_Transmit(&huart3, text2, strlen(text2), 100);
+		sprintf(debug,"%lu", Read_Estop());
+		char text3[10] = " : ";
+		HAL_UART_Transmit(&huart3, debug, strlen(debug), 100);
+		HAL_UART_Transmit(&huart3, text3, strlen(text3), 100);
+		sprintf(debug,"%lu", debug_int);
+		char text4[10] = "\n\r";
+		HAL_UART_Transmit(&huart3, debug, strlen(debug), 100);
+		HAL_UART_Transmit(&huart3, text4, strlen(text4), 100);
 
     /* USER CODE END WHILE */
 
