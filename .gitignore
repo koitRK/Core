@@ -2,6 +2,7 @@
 __pycache__/
 
 *.s
+Startup/
 
 # C extensions
 *.so
